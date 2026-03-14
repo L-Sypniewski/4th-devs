@@ -4,3 +4,9 @@ node_modules/
 
 translated/
 vault/
+
+# .NET build artifacts
+**/bin/
+**/obj/
+*.user
+.vs/
