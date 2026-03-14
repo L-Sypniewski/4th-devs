@@ -1,0 +1,4 @@
+bin/
+obj/
+workspace/output/*
+!workspace/output/.gitkeep
