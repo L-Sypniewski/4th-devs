@@ -1,7 +1,7 @@
 namespace VideoAgent;
 
 /// <summary>
-/// Token usage statistics tracker.
+/// Token usage statistics.
 /// </summary>
 public sealed class UsageStats
 {
@@ -10,43 +10,30 @@ public sealed class UsageStats
     public int Requests { get; set; }
 }
 
-public sealed class GeminiStats
-{
-    public int Uploads { get; set; }
-    public int Processes { get; set; }
-}
-
+/// <summary>
+/// Global stats tracker.
+/// </summary>
 public static class StatsTracker
 {
-    private static readonly UsageStats _openAi = new();
-    private static readonly GeminiStats _gemini = new();
+    private static readonly UsageStats Stats = new();
 
-    public static void RecordUsage(UsageStats? usage)
+    public static void Record(UsageStats? usage)
     {
         if (usage == null) return;
-        _openAi.InputTokens += usage.InputTokens;
-        _openAi.OutputTokens += usage.OutputTokens;
-        _openAi.Requests++;
+        Stats.InputTokens += usage.InputTokens;
+        Stats.OutputTokens += usage.OutputTokens;
+        Stats.Requests++;
     }
 
-    public static void RecordGemini(string type)
+    public static void Log()
     {
-        if (type == "upload") _gemini.Uploads++;
-        else if (type == "process") _gemini.Processes++;
-    }
-
-    public static void LogStats()
-    {
-        Console.WriteLine($"\n📊 OpenAI Stats: {_openAi.Requests} requests, {_openAi.InputTokens} input tokens, {_openAi.OutputTokens} output tokens");
-        Console.WriteLine($"🎨 Gemini Stats: {_gemini.Uploads} uploads, {_gemini.Processes} processes\n");
+        Console.WriteLine($"\n📊 Stats: {Stats.Requests} requests, {Stats.InputTokens} input tokens, {Stats.OutputTokens} output tokens\n");
     }
 
     public static void Reset()
     {
-        _openAi.InputTokens = 0;
-        _openAi.OutputTokens = 0;
-        _openAi.Requests = 0;
-        _gemini.Uploads = 0;
-        _gemini.Processes = 0;
+        Stats.InputTokens = 0;
+        Stats.OutputTokens = 0;
+        Stats.Requests = 0;
     }
 }

@@ -1,83 +1,96 @@
 using Microsoft.Extensions.Configuration;
 
-using System.Net.Http.Headers;
-using System.Text.Json;
-using System.Text.Json.Serialization;
-
 namespace VideoAgent;
 
+public class Program
 {
-    /// <summary>
-    /// Main entry point for the video processing agent with interactive REPL
-    /// </summary>
-public static class Program
-{
-    private const string AgentInstructions = @"
-You are an autonomous video processing agent.
+    private const string ExampleQuery = "List 4 big claims breakdown from this video https://www.youtube.com/watch?v=Iar4yweKGoI";
 
-## GOAL
-Process, analyze, transcribe, and extract information from videos.
-Handle both local files and YouTube URLs
-
-## RESOURCES
-- workspace/input/   → Source video files to process
-- workspace/output/  → Generated analysis, transcriptions, extractions (JSON)
-
-- Supports both local video files and YouTube URLs
-
-## FEATURES
-
-Analysis types:
-- general: Comprehensive overview (visual + audio+ content)
-- visual: Cinematography, scenes, colors, composition
-- audio: Speech, music, sound effects
-- action: Events, movements, interactions
-
-Extraction types:
-- scenes: Distinct scenes with start/end timestamps
-- keyframes: Representative moments
-- objects: People, items, elements with visibility timestamps
-- text: On-screen text, titles, captions
-
-## VIDEO INPUT
-Supported sources: MP4, MPEG, MOV, AVi, FLV, WebM, WMV, 3GP, WMV
-- Local files: workspace/input/ when not using YouTube URLs
-- YouTube URLs work directly - no download needed
-- Save results to workspace/output/ when requested
-- One video per request works best
-
-- Short results will time out
-
-    - TranscribeVideo [video_path, includeTimestamps, detectSpeakers, outputName]);
-    - ExtractVideo[video_path, includeTimestamps, extractionType, fps, videoMetadata]
-    });
-    catch (Exception ex)
+    public static async Task Main(string[] args)
     {
-        LogError("analyze_video", ex.Message);
-        return new { success = false, error = ex.Message };
-    }
-        catch (Exception ex)
+        var config = new ConfigurationBuilder()
+            .AddUserSecrets<Program>()
+            .AddEnvironmentVariables()
+            .Build();
+
+        var openAiKey = config["OPENAI_API_KEY"] ?? config["OPENROUTER_API_KEY"];
+        var geminiKey = config["GEMINI_API_KEY"];
+
+        if (string.IsNullOrEmpty(openAiKey))
         {
-            LogError("transcribe_video", ex.Message);
-            return new { success = false, error = ex.Message };
-        }
-        catch (Exception ex)
-        {
-            LogError("extract_video", ex.Message);
-            return new { success = false, error = ex.Message };
-        }
-        catch (Exception ex)
-        {
-            LogError("query_video", ex.Message);
-            return new { success = false, error = ex.Message };
-        }
-        }
-        catch (Exception ex)
-        {
-            LogError("query_video", ex.Message);
-            return text ?? throw new Exception($"No response from Gemini");
+            ConsoleLogger.Error("API key not set", "Set OPENAI_API_KEY or OPENROUTER_API_KEY");
+            return;
         }
 
-    }
+        if (string.IsNullOrEmpty(geminiKey))
+        {
+            ConsoleLogger.Error("GEMINI_API_KEY not set");
+            return;
+        }
 
+        var configuration = new Configuration
+        {
+            OpenAiApiKey = openAiKey,
+            OpenRouterApiKey = config["OPENROUTER_API_KEY"],
+            AiProvider = config["AI_PROVIDER"] ?? "openai",
+            GeminiApiKey = geminiKey
+        };
+
+        using var httpClient = new HttpClient();
+        var apiClient = new ResponsesApiClient(configuration, httpClient);
+        var videoService = new GeminiVideoService(configuration, httpClient);
+        var agent = new Agent(apiClient, videoService);
+
+        // Warning
+        ConsoleLogger.Box("Video Processing Agent\nType 'exit' to quit, 'clear' to reset");
+        Console.WriteLine($"  Example: {ExampleQuery}");
+        Console.WriteLine();
+        Console.WriteLine("  WARNING: This will process videos and consume tokens.");
+        Console.WriteLine();
+
+        // Confirmation
+        Console.Write("Continue? (yes/y): ");
+        var answer = Console.ReadLine()?.Trim().ToLower();
+        if (answer != "yes" && answer != "y")
+        {
+            Console.WriteLine("Cancelled.");
+            return;
+        }
+
+        // REPL
+        var conversation = new List<object>();
+
+        while (true)
+        {
+            Console.Write("\nYou: ");
+            var input = Console.ReadLine()?.Trim();
+
+            if (string.IsNullOrWhiteSpace(input))
+                continue;
+
+            if (input.Equals("exit", StringComparison.OrdinalIgnoreCase))
+                break;
+
+            if (input.Equals("clear", StringComparison.OrdinalIgnoreCase))
+            {
+                conversation = [];
+                StatsTracker.Reset();
+                ConsoleLogger.Success("Conversation cleared");
+                continue;
+            }
+
+            try
+            {
+                var result = await agent.RunAsync(input, conversation);
+                conversation = result.ConversationHistory;
+                Console.WriteLine($"\nAssistant: {result.Response}\n");
+            }
+            catch (Exception ex)
+            {
+                ConsoleLogger.Error("Error", ex.Message);
+            }
+        }
+
+        StatsTracker.Log();
+    }
 }
