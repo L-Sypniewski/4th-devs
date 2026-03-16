@@ -96,6 +96,140 @@ public class ImportanceBasedPruner : IContextPruner
 
 ---
 
+## Context Window Limits
+
+### Input/Output Token Split
+
+Models have **separate limits** for input (prompt) tokens vs output (completion) tokens. This is a critical distinction often misunderstood:
+
+| Model | Max Input Tokens | Max Output Tokens |
+|-------|------------------|-------------------|
+| Claude 3.5 Sonnet | 200,000 | 8,192 |
+| Claude 3.5 Haiku | 200,000 | 8,192 |
+| GPT-4o | 128,000 | 4,096 (varies) |
+| GPT-4o-mini | 128,000 | 16,384 |
+
+**Key Insight:** The available context for your prompt is calculated as:
+
+```
+available_context = max_input - current_tokens - reserved_output
+```
+
+You must **reserve space** for the model's response. If you send a prompt that uses all 200K input tokens, the model has no room to generate a response.
+
+### Context Window Calculation
+
+```csharp
+// Example: Claude 3.5 Sonnet
+int maxInputTokens = 200_000;
+int maxOutputTokens = 8_192;
+int reservedOutput = 4_000; // Reserve space for expected response
+
+int CalculateAvailableTokens(int currentPromptTokens)
+{
+    return maxInputTokens - currentPromptTokens - reservedOutput;
+}
+```
+
+**Why reserve output space?**
+- Prevents request failures when the model needs to generate a long response
+- Ensures the model has enough context to complete multi-step reasoning
+- Avoids truncation of code blocks, JSON responses, or detailed explanations
+
+### C# Interface Pattern
+
+```csharp
+/// <summary>
+/// Calculates available context window space accounting for input/output limits.
+/// </summary>
+public interface IContextWindowCalculator
+{
+    /// <summary>
+    /// Maximum tokens allowed in the input (prompt).
+    /// </summary>
+    int MaxInputTokens { get; }
+
+    /// <summary>
+    /// Maximum tokens allowed in the output (completion).
+    /// </summary>
+    int MaxOutputTokens { get; }
+
+    /// <summary>
+    /// Calculates remaining tokens available for additional content.
+    /// </summary>
+    /// <param name="currentTokens">Current number of tokens in the prompt.</param>
+    /// <param name="reservedOutput">Optional output reservation. Defaults to sensible default.</param>
+    /// <returns>Number of tokens available before hitting the input limit.</returns>
+    int CalculateAvailableTokens(int currentTokens, int? reservedOutput = null);
+
+    /// <summary>
+    /// Determines if the current context exceeds available space.
+    /// </summary>
+    bool IsOverLimit(int currentTokens, int? reservedOutput = null);
+}
+
+public record ModelContextLimits(int MaxInput, int MaxOutput);
+
+public class ContextWindowCalculator : IContextWindowCalculator
+{
+    private readonly ModelContextLimits _limits;
+    private readonly int _defaultReservedOutput;
+
+    public ContextWindowCalculator(ModelContextLimits limits, int defaultReservedOutput = 4000)
+    {
+        _limits = limits;
+        _defaultReservedOutput = defaultReservedOutput;
+    }
+
+    public int MaxInputTokens => _limits.MaxInput;
+    public int MaxOutputTokens => _limits.MaxOutput;
+
+    public int CalculateAvailableTokens(int currentTokens, int? reservedOutput = null)
+    {
+        var reserved = reservedOutput ?? _defaultReservedOutput;
+        var available = MaxInputTokens - currentTokens - reserved;
+        return Math.Max(0, available);
+    }
+
+    public bool IsOverLimit(int currentTokens, int? reservedOutput = null)
+    {
+        var reserved = reservedOutput ?? _defaultReservedOutput;
+        return (currentTokens + reserved) > MaxInputTokens;
+    }
+}
+
+// Predefined limits for common models
+public static class ModelLimits
+{
+    public static readonly ModelContextLimits Claude35Sonnet = new(200_000, 8_192);
+    public static readonly ModelContextLimits Claude35Haiku = new(200_000, 8_192);
+    public static readonly ModelContextLimits GPT4o = new(128_000, 4_096);
+    public static readonly ModelContextLimits GPT4oMini = new(128_000, 16_384);
+}
+```
+
+### Usage Example
+
+```csharp
+// Setup
+var calculator = new ContextWindowCalculator(
+    ModelLimits.Claude35Sonnet,
+    defaultReservedOutput: 4000
+);
+
+// Check before adding content
+var currentTokens = tokenCounter.CountTokens(messages);
+var available = calculator.CalculateAvailableTokens(currentTokens);
+
+if (available < estimatedNewTokens)
+{
+    // Need to prune context
+    var pruneResult = pruner.Prune(messages, calculator.MaxInputTokens - 4000);
+}
+```
+
+---
+
 ## Code Patterns to Investigate
 
 ### Token Counting Pattern
