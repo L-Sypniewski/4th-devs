@@ -44,22 +44,26 @@ This investigation guides porting a TypeScript agent runtime to .NET using:
 |-------|-------|-------|----------|
 | Phase 1 | Foundation | 00, 01-01, 02-01 | High |
 | Phase 2 | Core Patterns | 01-02, 03-01, 03-02 | High |
-| Phase 3 | Providers | 02-02, 02-03 | Medium |
-| Phase 4 | Agent Features | 01-03, 03-03, 08-01 | Medium |
-| Phase 5 | Production | 05-01, 06-01, 06-03, 06-04 | Medium |
-| Phase 6 | Integration | 04-01, 04-02 | Low |
-| Phase 7 | Deployment | 07-01, 07-02, 09-02 | Low |
-| Phase 8 | Execution | 10-01, 10-02, 10-03 | Low |
+| Phase 3 | Context Management | 05-01, 05-02, 05-03 | **High** |
+| Phase 4 | Providers | 02-02, 02-03 | Medium |
+| Phase 5 | Agent Features | 01-03, 03-03, 08-01 | Medium |
+| Phase 6 | Production | 06-01, 06-02, 06-03, 06-04 | Medium |
+| Phase 7 | MCP Integration | 04-01, 04-02, 04-03 | Medium |
+| Phase 8 | Service Hosting | 07-01, 07-02, 07-03 | Low |
+| Phase 9 | Persistence | 09-01, 09-02 | Low |
+| Phase 10 | Implementation | 10-01, 10-02, 10-03 | Low |
 
 **Investigation Order:**
-1. Phase 1 - Foundation (files 00, 01-01, 02-01)
-2. Phase 2 - Core Patterns (files 01-02, 03-01, 03-02)
-3. Phase 3 - Providers (files 02-02, 02-03)
-4. Phase 4 - Agent Features (files 01-03, 03-03, 08-01)
-5. Phase 5 - Production (files 05-01, 06-01, 06-03, 06-04)
-6. Phase 6 - Integration (files 04-01, 04-02)
-7. Phase 7 - Deployment (files 07-01, 07-02, 09-02)
-8. Phase 8 - Execution (files 10-01, 10-02, 10-03)
+1. Phase 1 - Foundation (00-overview, 01-01-high-level-mapping, 02-01-ichatclient-interface)
+2. Phase 2 - Core Patterns (01-02-state-machine, 03-01-tool-registry, 03-02-function-invoking)
+3. Phase 3 - Context Management (05-01-session-repository, 05-02-context-pruning, 05-03-summarization)
+4. Phase 4 - Providers (02-02-provider-abstraction, 02-03-streaming-patterns)
+5. Phase 5 - Agent Features (01-03-hierarchy-patterns, 03-03-tool-types, 08-01-waiting-resume)
+6. Phase 6 - Production (06-01-rate-limiting, 06-02-retry-logic, 06-03-event-system, 06-04-opentelemetry)
+7. Phase 7 - MCP Integration (04-01-mcp-client-manager, 04-02-oauth-flow, 04-03-tool-discovery)
+8. Phase 8 - Service Hosting (07-01-service-hosting, 07-02-dependency-injection, 07-03-configuration)
+9. Phase 9 - Persistence (09-01-repository-pattern, 09-02-entity-framework)
+10. Phase 10 - Implementation (10-01-phase-1, 10-02-phase-2, 10-03-phase-3)
 
 ## Key Feature Mapping Table
 

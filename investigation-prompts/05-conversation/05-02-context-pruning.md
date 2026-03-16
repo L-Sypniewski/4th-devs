@@ -13,9 +13,10 @@ Investigate the following TypeScript source files for context management pattern
 
 | File Path | Purpose |
 |-----------|---------|
-| `packages/core/src/runner.ts` | Main execution runner with context handling |
-| `packages/core/src/context.ts` | Context management implementation |
-| `packages/core/src/utils/token-counter.ts` | Token counting utilities |
+| `01_05_agent/src/runtime/runner.ts` | Main execution runner with context handling |
+| `01_05_agent/src/runtime/context.ts` | Context management implementation |
+| `01_05_agent/src/utils/tokens.ts` | Token counting utilities |
+| `01_05_agent/src/utils/pruning.ts` | Pruning logic implementation |
 | Any files containing `prune`, `truncate`, `context` | Related functionality |
 
 ### Search Patterns
@@ -112,6 +113,23 @@ function countTokens(messages: Message[]): number {
 // - Approximation based on character count?
 // - API-based counting?
 ```
+
+### Token Estimation Constants (from S01E05)
+
+The TypeScript implementation uses these constants for character-based token estimation:
+
+```typescript
+const CHARS_PER_TOKEN = 3.5  // Conservative multiplier (estimates run slightly high)
+
+// Per-item overhead for role tags, separators, etc.
+chars += 20  // overhead per item
+```
+
+**Key Points:**
+- ~4 chars per token is typical for English text
+- Using 3.5 as a conservative multiplier provides a safety margin
+- 20 characters overhead per message item (accounts for role markers, JSON structure)
+- No explicit 20% buffer mentioned in code, but the conservative multiplier implicitly provides margin
 
 ### Message Pruning Pattern
 
