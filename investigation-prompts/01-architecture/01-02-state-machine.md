@@ -37,11 +37,12 @@ Investigate agent state transitions and their implementation in both TypeScript 
 ```typescript
 // TS Pattern - State Enum
 enum AgentState {
-  Idle = 'idle',
+  Pending = 'pending',
   Running = 'running',
   Waiting = 'waiting',
   Completed = 'completed',
-  Error = 'error'
+  Failed = 'failed',
+  Cancelled = 'cancelled'
 }
 
 // TS Pattern - State Transition

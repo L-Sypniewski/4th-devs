@@ -244,17 +244,120 @@ public interface IAgentStateRepository : IRepository<AgentState>
 
 ---
 
+## Drizzle ORM → EF Core Mapping
+
+The TypeScript architecture uses **Drizzle ORM** for SQLite with the following patterns:
+
+### TypeScript (Drizzle ORM)
+```typescript
+// Drizzle schema definition
+import { sqliteTable, text, integer } from 'drizzle-orm/sqlite-core';
+
+export const agents = sqliteTable('agents', {
+  id: text('id').primaryKey(),
+  sessionId: text('session_id').notNull(),
+  status: text('status').notNull(),
+  config: text('config'), // JSON
+  turnCount: integer('turn_count').default(0),
+  createdAt: integer('created_at'),
+});
+
+// Drizzle query patterns
+const agent = await db.select().from(agents).where(eq(agents.id, id));
+const sessionAgents = await db.select().from(agents).where(eq(agents.sessionId, sessionId));
+```
+
+### C# (Entity Framework Core)
+```csharp
+// EF Core entity definition
+public class Agent
+{
+    public string Id { get; set; }
+    public string SessionId { get; set; }
+    public AgentStatus Status { get; set; }
+    public string? Config { get; set; } // JSON or owned type
+    public int TurnCount { get; set; }
+    public DateTime CreatedAt { get; set; }
+}
+
+// EF Core DbContext
+public class AgentDbContext : DbContext
+{
+    public DbSet<Agent> Agents { get; set; }
+
+    protected override void OnModelCreating(ModelBuilder modelBuilder)
+    {
+        modelBuilder.Entity<Agent>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Status).HasConversion<string>();
+            // JSON column mapping
+            entity.Property(e => e.Config).HasColumnType<string>();
+        });
+    }
+}
+
+// EF Core query patterns
+var agent = await context.Agents.FindAsync(id);
+var sessionAgents = await context.Agents
+    .Where(a => a.SessionId == sessionId)
+    .ToListAsync();
+```
+
+### Key Mapping Table
+
+| Drizzle ORM Concept | EF Core Equivalent | Notes |
+|---------------------|-------------------|-------|
+| `sqliteTable()` | `DbSet<T>` property | Table mapping |
+| `text()`, `integer()` | CLR types (string, int) | Column type mapping |
+| `.primaryKey()` | `HasKey()` | Primary key configuration |
+| `.notNull()` | Required property | Non-null constraint |
+| `.default()` | Default value in property | Default value |
+| `db.select().from()` | `DbContext.Set<T>() | Query source |
+| `.where(eq())` | `.Where()` | Filter clause |
+| `.where(inArray())` | `.Contains()` | IN clause |
+| JSON columns | `.HasColumnType<string>() + conversion | EF Core stores as string,| Migrations | `dotnet ef migrations add` | Schema evolution |
+
+### Transaction Patterns
+
+```typescript
+// Drizzle transaction
+await db.transaction(async (tx) => {
+  await tx.insert(agents).values(newAgent);
+  await tx.update(agents).set({ status: 'running' }).where(eq(agents.id, id));
+});
+```
+
+```csharp
+// EF Core transaction
+using var transaction = await context.Database.BeginTransactionAsync();
+try
+{
+    context.Agents.Add(newAgent);
+    agent.Status = AgentStatus.Running;
+    await context.SaveChangesAsync();
+    await transaction.CommitAsync();
+}
+catch
+{
+    await transaction.RollbackAsync();
+    throw;
+}
+```
+
+---
+
 ## Investigation Tasks
 
-- [ ] Locate TypeScript repository implementations
-- [ ] Document generic patterns used in TS
-- [ ] Identify transaction boundaries
-- [ ] Note storage backend abstractions
-- [ ] Design .NET generic repository interface
-- [ ] Design unit of work interface
-- [ ] Implement SQLite-specific base class
-- [ ] Create specific repository interfaces
-- [ ] Add async cancellation support
+- [x] Locate TypeScript repository implementations
+- [x] Document generic patterns used in TS
+- [x] Identify transaction boundaries
+- [x] Note storage backend abstractions
+- [x] Design .NET generic repository interface
+- [x] Design unit of work interface
+- [x] Implement SQLite-specific base class
+- [x] Create specific repository interfaces
+- [x] Add async cancellation support
 - [ ] Write unit tests for repositories
 
 ---
@@ -266,3 +369,4 @@ public interface IAgentStateRepository : IRepository<AgentState>
 - Document connection string management strategies
 - Consider connection pooling for PostgreSQL
 - Evaluate bulk operation support for high-volume scenarios
+- **Drizzle ORM → EF Core**: TypeScript uses Drizzle for SQLite; .NET uses Entity Framework Core with similar patterns

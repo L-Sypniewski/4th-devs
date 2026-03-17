@@ -65,6 +65,94 @@ This investigation guides porting a TypeScript agent runtime to .NET using:
 9. Phase 9 - Persistence (09-01-repository-pattern, 09-02-entity-framework)
 10. Phase 10 - Implementation (10-01-phase-1, 10-02-phase-2, 10-03-phase-3)
 
+## API Endpoints
+
+The TypeScript implementation exposes the following HTTP endpoints:
+
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| POST | `/api/chat/completions` | Yes | Create chat completion (streaming or sync) |
+| POST | `/api/chat/agents/:id/deliver` | Yes | Deliver result to waiting agent |
+| GET | `/api/chat/agents/:id` | Yes | Get agent status |
+| GET | `/health` | No | Health check (runtime + DB) |
+
+### .NET Minimal API Equivalents
+
+```csharp
+// Program.cs - ASP.NET Core Minimal APIs
+app.MapPost("/api/chat/completions", async (
+    ChatRequest request,
+    IAgentService agentService,
+    CancellationToken ct) =>
+{
+    if (request.Stream)
+        return Results.Streaming(agentService.StreamCompletionAsync(request, ct));
+    return Results.Ok(await agentService.CompleteAsync(request, ct));
+});
+
+app.MapPost("/api/chat/agents/{id}/deliver", async (
+    string id,
+    DeliveryRequest request,
+    IAgentService agentService,
+    CancellationToken ct) =>
+{
+    await agentService.DeliverResultAsync(id, request, ct);
+    return Results.Ok();
+});
+
+app.MapGet("/api/chat/agents/{id}", async (
+    string id,
+    IAgentService agentService) =>
+{
+    var status = await agentService.GetStatusAsync(id);
+    return Results.Ok(status);
+});
+
+app.MapGet("/health", async (IRuntimeContext runtime) =>
+{
+    var dbHealthy = await runtime.Repositories.Ping();
+    return dbHealthy ? Results.Ok() : Results.StatusCode(503);
+});
+```
+
+---
+
+## Additional Investigation Files
+
+The following files are not in the standard reading guide but provide additional context:
+
+### Category Summary Files (top-level)
+| File | Description |
+|------|-------------|
+| `01-api-layer.md` | API layer summary |
+| `02-provider-system.md` | Provider system overview |
+| `03-tool-system.md` | Tool system summary |
+| `04-mcp-integration.md` | MCP integration summary |
+| `05-domain-models.md` | Domain model definitions |
+| `06-context-management.md` | Context management patterns |
+| `07-runner-events.md` | Runner event system |
+| `08-observability.md` | Observability setup |
+| `09-repository-pattern.md` | Repository pattern summary |
+| `10-configuration.md` | Configuration patterns |
+| `11-workspace-templates.md` | Workspace template system |
+
+### Extended Investigation Files
+| File | Description |
+|------|-------------|
+| `03-tools/03-05-moderation-api.md` | Content moderation API |
+| `05-conversation/05-04-heartbeat-pattern.md` | Heartbeat/progress updates |
+| `06-resilience/06-05-auth-middleware.md` | Authentication middleware |
+| `08-execution/08-02-deliver-result.md` | Result delivery patterns |
+| `08-execution/08-03-background-processing.md` | Background task processing |
+| `08-execution/08-04-trusted-actions.md` | Trusted action patterns |
+
+### Reference Document
+| File | Description |
+|------|-------------|
+| `MICROSOFT-NET-IMPLEMENTATION-GUIDE.md` | Comprehensive TS→.NET mapping guide |
+
+---
+
 ## Key Feature Mapping Table
 
 | 01_05_agent Feature | Microsoft Equivalent | Status |
@@ -79,4 +167,4 @@ This investigation guides porting a TypeScript agent runtime to .NET using:
 | Conversation state | ChatHistoryProvider | Extend |
 | Hierarchical agents | Agent handoffs | Extend |
 | Non-blocking execution | Custom | Implement |
-| SQLite persistence | Custom provider | Implement |
+| SQLite persistence (Drizzle ORM) | EF Core | Map |
