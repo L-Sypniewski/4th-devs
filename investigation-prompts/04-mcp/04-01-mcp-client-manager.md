@@ -282,8 +282,8 @@ public class McpServerOptions
 
 ## Status
 
-- [ ] TypeScript sources reviewed
-- [ ] ModelContextProtocol NuGet explored
-- [ ] C# interface designed
-- [ ] Configuration binding implemented
-- [ ] Connection lifecycle documented
+- [x] TypeScript sources reviewed
+- [x] ModelContextProtocol NuGet explored
+- [x] C# interface designed
+- [x] Configuration binding implemented
+- [x] Connection lifecycle documented

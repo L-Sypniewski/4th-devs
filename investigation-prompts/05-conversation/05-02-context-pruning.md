@@ -444,18 +444,134 @@ public class ContextManager : IContextManager
 
 ---
 
+## Architecture Validation: 4-Step Pruning Algorithm
+
+The TypeScript implementation uses a specific 4-step pruning algorithm documented in the architecture (`src/utils/pruning.ts:100-159`):
+
+### Step 1: Truncate Large Outputs
+```typescript
+const { items: truncated, truncatedCount } = truncateLargeOutputs(items, config.maxToolOutputChars)
+```
+**Purpose:** Reduce individual tool output sizes before token estimation.
+**Default:** `maxToolOutputChars: 10_000`
+
+### Step 2: Estimate Tokens
+```typescript
+let estimate = estimateConversationTokens(truncated, systemPrompt)
+if (estimate <= targetTokens) {
+  return { items: truncated, estimatedTokens: estimate, droppedCount: 0, truncatedCount, droppedItems: [] }
+}
+```
+**Purpose:** Calculate total token count using character-based estimation.
+**Formula:** `chars / 3.5 + 20 per item overhead`
+
+### Step 3: Identify Turns
+```typescript
+const turns = identifyTurns(truncated)
+const keepFirst = turns[0]
+const keepRecent = turns.slice(-config.minRecentTurns)
+const droppable = turns.slice(1, -config.minRecentTurns)
+```
+**Purpose:** Group items into turns and identify which can be dropped.
+**Strategy:** Always keep first turn + last N turns, others are droppable.
+
+### Step 4: Drop Oldest Droppable
+```typescript
+while (estimate > targetTokens && droppable.length > 0) {
+  // Drop oldest droppable turn
+  // Re-estimate
+}
+```
+**Purpose:** Iteratively drop oldest turns until under budget.
+
+### Configuration: PruningThresholds
+```typescript
+interface PruningThresholds {
+  threshold: number           // Trigger at 85% context usage
+  targetUtilization: number   // Aim for 50% after pruning
+  minRecentTurns: number      // Always keep 3-5 recent turns
+  maxToolOutputChars: number  // Truncate tool outputs > 10000 chars
+  enableSummarization: boolean // Optional: summarize dropped content
+}
+
+const DEFAULT_PRUNING: PruningThresholds = {
+  threshold: 0.85,
+  targetUtilization: 0.50,
+  minRecentTurns: 3,
+  maxToolOutputChars: 10_000,
+  enableSummarization: true,
+}
+```
+
+### C# Implementation of 4-Step Algorithm
+```csharp
+public class ArchitectureValidPruner : IContextPruner
+{
+    private readonly PruningConfig _config;
+
+    public PruneResult Prune(IReadOnlyList<Item> items, string? systemPrompt, int contextWindow)
+    {
+        var targetTokens = (int)(contextWindow * _config.TargetUtilization);
+
+        // Step 1: Truncate large outputs
+        var (truncated, truncatedCount) = TruncateLargeOutputs(items, _config.MaxToolOutputChars);
+
+        // Step 2: Estimate tokens
+        var estimate = EstimateTokens(truncated, systemPrompt);
+        if (estimate <= targetTokens)
+            return new(truncated, estimate, 0, truncatedCount, []);
+
+        // Step 3: Identify turns
+        var turns = IdentifyTurns(truncated);
+        var keepFirst = turns[0];
+        var keepRecent = turns.TakeLast(_config.MinRecentTurns);
+        var droppable = turns.Skip(1).SkipLast(_config.MinRecentTurns);
+
+        // Step 4: Drop oldest droppable
+        var dropped = new List<Turn>();
+        while (estimate > targetTokens && droppable.Any())
+        {
+            var oldest = droppable.First();
+            droppable = droppable.Skip(1);
+            dropped.Add(oldest);
+            estimate = ReEstimate(truncated, dropped);
+        }
+
+        var result = BuildResult(truncated, dropped);
+        return new(result.Items, estimate, dropped.Count, truncatedCount, dropped);
+    }
+}
+
+public record PruningConfig(
+    double Threshold = 0.85,
+    double TargetUtilization = 0.50,
+    int MinRecentTurns = 3,
+    int MaxToolOutputChars = 10_000,
+    bool EnableSummarization = true
+);
+```
+
+**Validation against Architecture:**
+- [x] Step 1 (truncateLargeOutputs): Documented with C# implementation
+- [x] Step 2 (estimateTokens): Documented with character-based estimation
+- [x] Step 3 (identifyTurns): Documented with turn grouping strategy
+- [x] Step 4 (drop oldest): Documented with iterative loop
+- [x] PruningThresholds: Documented with C# config record
+
+---
+
 ## Investigation Tasks
 
-- [ ] Locate TypeScript context management implementation
-- [ ] Document token counting approach used
-- [ ] Identify pruning algorithm and thresholds
-- [ ] Note how system messages are preserved
+- [x] Locate TypeScript context management implementation
+- [x] Document token counting approach used
+- [x] Identify pruning algorithm and thresholds
+- [x] Note how system messages are preserved
 - [ ] Document any caching of token counts
-- [ ] Design .NET token counter interface
+- [x] Design .NET token counter interface
 - [ ] Implement TikToken-based token counter
-- [ ] Create pruning strategy interfaces
-- [ ] Implement sliding window pruner
-- [ ] Implement priority-based pruner
+- [x] Create pruning strategy interfaces
+- [x] Implement sliding window pruner
+- [x] Implement priority-based pruner
 - [ ] Add unit tests for all components
 
 ---
@@ -467,3 +583,4 @@ public class ContextManager : IContextManager
 - Consider caching token counts for unchanged messages
 - Document trade-offs between different pruning strategies
 - Consider providing configuration for pruning behavior
+- **Architecture Validation**: The 4-step algorithm from `src/utils/pruning.ts` has been validated and documented
