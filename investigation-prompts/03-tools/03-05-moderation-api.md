@@ -321,6 +321,188 @@ Document whether 01_05_agent has any existing moderation patterns:
 
 ---
 
+## Implementation Patterns
+
+### Middleware Integration
+
+Integrate content moderation into the request pipeline:
+
+```csharp
+public static class ModerationServiceExtensions
+{
+    public static IServiceCollection AddContentModeration(
+        this IServiceCollection services,
+        IConfiguration configuration)
+    {
+        services.Configure<ModerationOptions>(configuration.GetSection("Moderation"));
+
+        services.AddSingleton<IContentModerator, CompositeModerator>();
+        services.AddSingleton<IPreModerator, AzureContentModerator>();
+        services.AddSingleton<IPostModerator, OutputFilterModerator>();
+
+        // Register provider-specific moderators
+        services.AddAzureContentSafety(configuration);
+        services.AddOpenAIModeration(configuration);
+
+        return services;
+    }
+
+    public static IApplicationBuilder UseContentModeration(
+        this IApplicationBuilder app)
+    {
+        return app.UseMiddleware<PreModerationMiddleware>()
+                  .UseMiddleware<PostModerationMiddleware>();
+    }
+}
+```
+
+### Pre-Moderation Middleware
+
+```csharp
+public class PreModerationMiddleware
+{
+    private readonly IPreModerator _moderator;
+    private readonly ILogger<PreModerationMiddleware> _logger;
+    private readonly ModerationOptions _options;
+
+    public async Task InvokeAsync(HttpContext context, RequestDelegate next)
+    {
+        if (!_options.EnablePreModeration)
+        {
+            await next(context);
+            return;
+        }
+
+        var request = await ReadChatRequestAsync(context);
+        var result = await _moderator.ModerateAsync(
+            request.Content,
+            context.RequestAborted);
+
+        if (!result.IsSafe)
+        {
+            _logger.LogWarning(
+                "Pre-moderation blocked request: {Categories}",
+                string.Join(", ", result.Flags.Select(f => f.Category)));
+
+            context.Response.StatusCode = StatusCodes.Status400BadRequest;
+            await context.Response.WriteAsJsonAsync(new
+            {
+                error = "Content not allowed",
+                categories = result.Flags.Select(f => f.Category.ToString()),
+                severity = result.OverallScore
+            });
+            return;
+        }
+
+        // Store sanitized content if PII was redacted
+        if (result.RedactedContent is not null)
+        {
+            context.Items["RedactedContent"] = result.RedactedContent;
+        }
+
+        await next(context);
+    }
+}
+```
+
+### Post-Moderation Middleware
+
+```csharp
+public class PostModerationMiddleware
+{
+    private readonly IPostModerator _moderator;
+    private readonly ILogger<PostModerationMiddleware> _logger;
+
+    public async Task InvokeAsync(HttpContext context, RequestDelegate next)
+    {
+        var originalBodyStream = context.Response.Body;
+        using var memoryStream = new MemoryStream();
+        context.Response.Body = memoryStream;
+
+        await next(context);
+
+        memoryStream.Position = 0;
+        var content = await new StreamReader(memoryStream).ReadToEndAsync();
+
+        var result = await _moderator.ModerateAsync(content, context.RequestAborted);
+
+        if (!result.IsSafe)
+        {
+            _logger.LogWarning("Post-moderation filtered response content");
+
+            // Replace flagged content with safe alternative
+            var safeContent = FilterContent(content, result.Flags);
+
+            context.Response.Body = originalBodyStream;
+            await context.Response.WriteAsync(safeContent);
+        }
+        else
+        {
+            context.Response.Body = originalBodyStream;
+            memoryStream.Position = 0;
+            await memoryStream.CopyToAsync(originalBodyStream);
+        }
+    }
+
+    private string FilterContent(string content, IReadOnlyList<FlaggedContent> flags)
+    {
+        var filtered = content;
+        foreach (var flag in flags.OrderByDescending(f => f.MatchedText?.Length ?? 0))
+        {
+            if (!string.IsNullOrEmpty(flag.MatchedText))
+            {
+                filtered = filtered.Replace(flag.MatchedText, "[Content filtered]");
+            }
+        }
+        return filtered;
+    }
+}
+```
+
+### Configuration Schema
+
+```csharp
+public class ModerationOptions
+{
+    /// <summary>
+    /// Enable pre-moderation of user input
+    /// </summary>
+    public bool EnablePreModeration { get; set; } = true;
+
+    /// <summary>
+    /// Enable post-moderation of AI output
+    /// </summary>
+    public bool EnablePostModeration { get; set; } = true;
+
+    /// <summary>
+    /// Block requests that fail moderation
+    /// </summary>
+    public bool BlockOnFailure { get; set; } = true;
+
+    /// <summary>
+    /// Severity threshold for blocking (0-1)
+    /// </summary>
+    public float SeverityThreshold { get; set; } = 0.5f;
+
+    /// <summary>
+    /// Categories to check
+    /// </summary>
+    public ModerationCategory[] Categories { get; set; } = Enum.GetValues<ModerationCategory>();
+
+    /// <summary>
+    /// Cache moderation results for identical content
+    /// </summary>
+    public bool EnableCaching { get; set; } = true;
+
+    /// <summary>
+    /// Cache duration for moderation results
+    /// </summary>
+    public TimeSpan CacheDuration { get; set; } = TimeSpan.FromHours(1);
+}
+```
+
+---
+
 ## Status
 
 - [ ] TypeScript sources reviewed
@@ -330,3 +512,6 @@ Document whether 01_05_agent has any existing moderation patterns:
 - [ ] Provider comparison completed
 - [ ] Integration patterns documented
 - [ ] Best practices checklist created
+- [ ] Pre-moderation middleware implemented
+- [ ] Post-moderation middleware implemented
+- [ ] Configuration schema defined

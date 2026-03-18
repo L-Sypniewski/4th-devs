@@ -477,6 +477,61 @@ public interface IJobStateStore
 
 ---
 
+## Integration with Message Queuing
+
+> **See Also**: `08-execution/08-05-message-queuing.md` for detailed message queue patterns
+
+### Queue-Driven Background Processing
+
+Background processing integrates with message queues for scalable, reliable job execution:
+
+```
++------------+     +----------------+     +------------------+
+|  Client    |---->| Message Queue  |---->| Background       |
+|  Request   |     | (Priority)     |     | Workers (xN)     |
++------------+     +----------------+     +------------------+
+                          |                       |
+                          v                       v
+                   +-------------+         +-------------+
+                   | Job State   |<------->| Agent       |
+                   | Store       |         | Runner      |
+                   +-------------+         +-------------+
+```
+
+### Queue Integration Pattern
+
+```csharp
+public class QueueDrivenBackgroundProcessor : BackgroundService
+{
+    private readonly IMessageQueue<AgentJob> _queue;
+    private readonly IAgentRunner _runner;
+    private readonly IJobStateStore _stateStore;
+    private readonly ILogger<QueueDrivenBackgroundProcessor> _logger;
+
+    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
+    {
+        _logger.LogInformation("Queue-driven processor starting");
+
+        await foreach (var job in _queue.DequeueAsync(stoppingToken))
+        {
+            try
+            {
+                await _stateStore.UpdateStatusAsync(job.MessageId, JobState.Running);
+                await _runner.RunAgentAsync(job.Message.AgentId, stoppingToken);
+                await _stateStore.UpdateStatusAsync(job.MessageId, JobState.Completed);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Job {JobId} failed", job.MessageId);
+                await _stateStore.UpdateStatusAsync(job.MessageId, JobState.Failed, ex.Message);
+            }
+        }
+    }
+}
+```
+
+---
+
 ## Status
 
 - [ ] Source code analyzed
@@ -486,3 +541,4 @@ public interface IJobStateStore
 - [ ] Progress tracking working
 - [ ] Integration tests written
 - [ ] External MQ integration documented
+- [ ] Message queue integration added (see 08-05-message-queuing.md)

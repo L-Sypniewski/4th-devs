@@ -470,6 +470,172 @@ public interface IConfirmationAuditLogger
 
 ---
 
+## Deterministic Confirmation Patterns
+
+### Time-Limited Approval Windows
+
+Confirmations should expire to prevent stale approvals from being used:
+
+```csharp
+public record TimeLimitedApproval(
+    string ApprovalId,
+    string UserId,
+    string ToolName,
+    JsonElement ApprovedArguments,
+    DateTimeOffset ApprovedAt,
+    DateTimeOffset ExpiresAt,
+    string RevocationToken
+);
+
+public class ApprovalCache
+{
+    private readonly ConcurrentDictionary<string, TimeLimitedApproval> _cache = new();
+
+    public bool TryUseApproval(string toolName, JsonElement args, [MaybeNullWhen(false)] out TimeLimitedApproval approval)
+    {
+        // Find matching approval that hasn't expired
+        approval = _cache.Values
+            .Where(a => a.ToolName == toolName)
+            .Where(a => a.ExpiresAt > DateTimeOffset.UtcNow)
+            .FirstOrDefault(a => ArgumentsMatch(a.ApprovedArguments, args));
+
+        return approval is not null;
+    }
+
+    private bool ArgumentsMatch(JsonElement approved, JsonElement requested)
+    {
+        // Deep comparison of arguments
+        return JsonElementComparer.Equals(approved, requested);
+    }
+}
+```
+
+### Idempotent Confirmation Requests
+
+Each confirmation request should have a unique ID for tracking:
+
+```csharp
+public record ConfirmationRequest(
+    string RequestId,           // Unique per request
+    string IdempotencyKey,      // Same for repeated requests
+    string UserId,
+    string ToolName,
+    JsonElement Arguments,
+    DateTimeOffset CreatedAt,
+    DateTimeOffset ExpiresAt
+);
+
+public class IdempotentConfirmationService
+{
+    private readonly ConcurrentDictionary<string, ConfirmationResponse> _responses = new();
+
+    public async Task<ConfirmationResponse> RequestConfirmationAsync(
+        ConfirmationRequest request,
+        CancellationToken ct)
+    {
+        // Check if we already have a response for this idempotency key
+        if (_responses.TryGetValue(request.IdempotencyKey, out var existing))
+        {
+            return existing;
+        }
+
+        // Request new confirmation
+        var response = await _uiService.PromptUserAsync(request, ct);
+
+        // Cache the response
+        _responses.TryAdd(request.IdempotencyKey, response);
+
+        return response;
+    }
+}
+```
+
+### Revocable Approvals
+
+Users should be able to revoke previously granted approvals:
+
+```csharp
+public interface IApprovalRevocation
+{
+    Task<bool> RevokeAsync(string revocationToken, CancellationToken ct);
+    Task<bool> IsRevokedAsync(string revocationToken, CancellationToken ct);
+}
+
+public class ApprovalRevocationService : IApprovalRevocation
+{
+    private readonly ConcurrentHashSet<string> _revokedTokens = new();
+    private readonly ILogger<ApprovalRevocationService> _logger;
+
+    public Task<bool> RevokeAsync(string revocationToken, CancellationToken ct)
+    {
+        var added = _revokedTokens.Add(revocationToken);
+        if (added)
+        {
+            _logger.LogInformation("Approval revoked: {Token}", revocationToken[..8] + "...");
+        }
+        return Task.FromResult(added);
+    }
+
+    public Task<bool> IsRevokedAsync(string revocationToken, CancellationToken ct)
+    {
+        return Task.FromResult(_revokedTokens.Contains(revocationToken));
+    }
+}
+```
+
+### Confirmation Scope Levels
+
+```csharp
+public enum ConfirmationScope
+{
+    /// <summary>
+    /// Approval for one specific action only
+    /// </summary>
+    SingleAction,
+
+    /// <summary>
+    /// Approval for same action type within session
+    /// </summary>
+    SessionScope,
+
+    /// <summary>
+    /// Approval for specified time window
+    /// </summary>
+    TimeWindow,
+
+    /// <summary>
+    /// Persistent approval until explicitly revoked
+    /// </summary>
+    Persistent
+}
+
+public static class ConfirmationScopeExtensions
+{
+    public static bool CoversAction(
+        this ConfirmationScope scope,
+        TimeLimitedApproval approval,
+        string currentToolName,
+        string? currentSessionId)
+    {
+        return scope switch
+        {
+            ConfirmationScope.SingleAction => false, // Never reuse
+            ConfirmationScope.SessionScope =>
+                approval.ToolName == currentToolName,
+            ConfirmationScope.TimeWindow =>
+                approval.ToolName == currentToolName &&
+                approval.ExpiresAt > DateTimeOffset.UtcNow,
+            ConfirmationScope.Persistent =>
+                approval.ToolName == currentToolName &&
+                approval.ExpiresAt > DateTimeOffset.UtcNow,
+            _ => false
+        };
+    }
+}
+```
+
+---
+
 ## Status
 
 - [ ] Source code analyzed
@@ -478,3 +644,6 @@ public interface IConfirmationAuditLogger
 - [ ] Whitelist authorization pattern designed
 - [ ] Audit logging pattern created
 - [ ] Integration tests written
+- [ ] Deterministic confirmation patterns documented
+- [ ] Time-limited approvals implemented
+- [ ] Revocation mechanism designed
