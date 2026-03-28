@@ -61,6 +61,8 @@ Start with high-level overview, then dive into details:
 
 ## Report Structure
 
+Always save generated reports as markdown files.
+
 ### Standard Template
 
 ```markdown
@@ -492,4 +494,4 @@ Before finalizing a sample explanation:
 
 ## Summary
 
-This skill transforms code samples into comprehensive explanations with structured reports and visual diagrams. Follow the standard template, adapt as needed, and always include mermaid diagrams to aid understanding. Focus on explaining "how" and "why", not just "what".
+This skill transforms code samples into comprehensive explanations with structured reports and visual diagrams. Follow the standard template, adapt as needed, and always include mermaid diagrams to aid understanding. Focus on explaining "how" and "why", not just "what". Always save generated reports as markdown files.
