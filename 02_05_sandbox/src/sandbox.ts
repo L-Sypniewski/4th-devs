@@ -1,4 +1,4 @@
-import { newQuickJSAsyncWASMModuleFromVariant } from "quickjs-emscripten-core";
+ import { newQuickJSAsyncWASMModuleFromVariant } from "quickjs-emscripten-core";
 import variant from "@jitl/quickjs-wasmfile-release-asyncify";
 
 export interface ExecutionResult {
