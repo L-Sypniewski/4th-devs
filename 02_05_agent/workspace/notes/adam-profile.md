@@ -2,14 +2,14 @@
 
 - Name: Adam
 - Location: Poland
-- Profession: Developer
+- Role: Developer
 - Company: easy_
 - Company focus: AI-powered automation tools
-- Favorite language: TypeScript
+- Favorite programming language: TypeScript
 - Also enjoys: Rust, especially for performance-critical work
-- Current project: A presentation on agentic context engineering
+- Current work: Presentation on agentic context engineering
 - Deadline: Next Friday
-- Key presentation topics:
+- Key topics for the presentation:
   - Observer pattern
   - Reflector pattern
   - Token estimation heuristics
